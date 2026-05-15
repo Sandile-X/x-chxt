@@ -186,9 +186,15 @@
     });
 
     socket.on('users', renderUsers);
-    socket.on('user-joined', ({ user }) => { addSystem(`${user} joined`); launchConfetti(); });
-    socket.on('user-left',   ({ user }) => {
-      typingUsers.delete(user); renderTyping(); addSystem(`${user} left`);
+    socket.on('user-joined', ({ user }) => {
+      addSystem(`${user} joined`);
+      playNotification();
+      launchConfetti();
+    });
+    socket.on('user-left', ({ user }) => {
+      typingUsers.delete(user); renderTyping();
+      addSystem(`${user} left`);
+      playNotification();
     });
     socket.on('read-update', (reads) => { updateReadMap(reads); refreshAllTicks(); });
     socket.on('typing', ({ user, isTyping }) => {
@@ -1002,7 +1008,8 @@
   // ── Matrix burn animation ─────────────────────────────────
   // ── Confetti ──────────────────────────────────────────────
   function launchConfetti() {
-    if (document.getElementById('confettiCanvas')) return;
+    // Cancel any running confetti and restart fresh
+    document.getElementById('confettiCanvas')?.remove();
 
     const canvas = document.createElement('canvas');
     canvas.id = 'confettiCanvas';
