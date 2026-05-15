@@ -197,6 +197,7 @@
     socket.on('disconnect', () => addSystem('Connection lost. Reconnecting…'));
     socket.on('reconnect',  () => addSystem('Reconnected.'));
     socket.on('burned',     ({ by }) => playBurnAnimation(by));
+    socket.on('you-are-owner', () => { amOwner = true; burnBtn.classList.remove('hidden'); });
 
     socket.on('msg-edited', ({ msgId, text }) => {
       const node = msgNodes.get(msgId);

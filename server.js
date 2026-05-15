@@ -264,6 +264,19 @@ io.on('connection', (socket) => {
     room.users.delete(socket.id);
     room.readTimestamps.delete(socket.id);
     room.lastActivity = Date.now();
+
+    // Transfer ownership so burn is never lost
+    if (room.ownerSocketId === socket.id) {
+      if (room.users.size > 0) {
+        const nextId = room.users.keys().next().value;
+        room.ownerSocketId = nextId;
+        io.to(nextId).emit('you-are-owner');
+      } else {
+        // Room empty — next joiner gets it via the join handler
+        room.ownerSocketId = null;
+      }
+    }
+
     socket.to(joinedRoom).emit('user-left', { user: username });
     io.to(joinedRoom).emit('users', Array.from(room.users.values()));
     io.to(joinedRoom).emit('read-update', serializeReads(room));
