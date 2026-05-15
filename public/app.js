@@ -47,7 +47,11 @@
 
   roomIdLabel.textContent = roomId.slice(0, 8) + '…';
   const savedName = sessionStorage.getItem('chat-name-' + roomId);
-  if (savedName) nameInput.value = savedName;
+  if (savedName) {
+    nameInput.value = savedName;
+    // Auto-rejoin on refresh — skip the modal entirely
+    tryJoin();
+  }
 
   // ── Keyboard / viewport fix ───────────────────────────────
   // On mobile the OS keyboard shrinks visualViewport but not window.

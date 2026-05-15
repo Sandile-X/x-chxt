@@ -60,23 +60,22 @@
       <span class="typing-text" id="typingText"></span>
     </div>
 
-    <!-- Attach menu (shown above composer when + is tapped) -->
-    <div id="attachMenu" class="attach-menu hidden">
-      <div class="attach-option" id="attachPhoto">
-        <span class="icon">🖼️</span>
-        <span class="label">Photo</span>
-      </div>
-      <div class="attach-option" id="attachVideo">
-        <span class="icon">🎬</span>
-        <span class="label">Video (7s)</span>
-      </div>
-    </div>
-
-    <!-- Hidden file inputs -->
-    <input type="file" id="photoInput" accept="image/*"         hidden />
-    <input type="file" id="videoInput" accept="video/*"         hidden />
+    <!-- Hidden file inputs (outside form so they don't submit it) -->
+    <input type="file" id="photoInput" accept="image/*" hidden />
+    <input type="file" id="videoInput" accept="video/*" hidden />
 
     <form id="composer" class="composer" autocomplete="off" style="position:relative">
+      <!-- Attach menu anchored inside the form so position:absolute works -->
+      <div id="attachMenu" class="attach-menu hidden">
+        <div class="attach-option" id="attachPhoto">
+          <span class="icon">🖼️</span>
+          <span class="label">Photo</span>
+        </div>
+        <div class="attach-option" id="attachVideo">
+          <span class="icon">🎬</span>
+          <span class="label">Video (7s)</span>
+        </div>
+      </div>
       <!-- Attach button -->
       <button class="attach-btn" type="button" id="attachBtn" title="Attach media">+</button>
 
