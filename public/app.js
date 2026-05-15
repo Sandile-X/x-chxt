@@ -167,6 +167,7 @@
         for (const m of res.messages) addMessage(m, false);
         scrollToBottom();
         emitRead();
+        launchConfetti();
       });
     });
 
@@ -185,7 +186,7 @@
     });
 
     socket.on('users', renderUsers);
-    socket.on('user-joined', ({ user }) => addSystem(`${user} joined`));
+    socket.on('user-joined', ({ user }) => { addSystem(`${user} joined`); launchConfetti(); });
     socket.on('user-left',   ({ user }) => {
       typingUsers.delete(user); renderTyping(); addSystem(`${user} left`);
     });
@@ -999,6 +1000,103 @@
   }
 
   // ── Matrix burn animation ─────────────────────────────────
+  // ── Confetti ──────────────────────────────────────────────
+  function launchConfetti() {
+    if (document.getElementById('confettiCanvas')) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.id = 'confettiCanvas';
+    canvas.style.cssText = 'position:fixed;inset:0;z-index:600;pointer-events:none;';
+    document.body.appendChild(canvas);
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const W = canvas.width, H = canvas.height;
+    const ctx = canvas.getContext('2d');
+
+    const COLORS = [
+      '#FF6B6B','#FF8E53','#FFD93D','#6BCB77',
+      '#4ECDC4','#4D96FF','#A855F7','#F06595',
+      '#74C0FC','#FFA94D','#51CF66','#F783AC',
+    ];
+
+    const N = 160;
+    const pieces = Array.from({ length: N }, (_, i) => {
+      const isRibbon = Math.random() < 0.35;
+      const w = isRibbon ? 4 + Math.random() * 3 : 8 + Math.random() * 9;
+      const h = isRibbon ? 16 + Math.random() * 12 : w * (0.35 + Math.random() * 0.45);
+      const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+      // Precompute a slightly darker shade for the back face
+      const r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
+      const back = `rgb(${Math.round(r * 0.6)},${Math.round(g * 0.6)},${Math.round(b * 0.6)})`;
+      return {
+        x: Math.random() * W,
+        y: -30 - (i / N) * 500,      // staggered spawn over 500px band
+        w, h, color, back,
+        isRibbon,
+        isCircle: !isRibbon && Math.random() < 0.2,
+        vx:  (Math.random() - 0.5) * 2,
+        vy:  1.8 + Math.random() * 2.8,
+        wave: { amp: 0.6 + Math.random() * 1.8, freq: 0.018 + Math.random() * 0.025, phase: Math.random() * Math.PI * 2 },
+        rotZ: Math.random() * Math.PI * 2,
+        rotY: Math.random() * Math.PI * 2,
+        dRotZ: (Math.random() - 0.5) * 0.07,
+        dRotY: 0.06 + Math.random() * 0.14,
+      };
+    });
+
+    const START = performance.now();
+    const TOTAL  = 4200;
+    const FADESTART = TOTAL - 700;
+
+    (function tick(now) {
+      const elapsed = now - START;
+      if (elapsed >= TOTAL) { canvas.remove(); return; }
+
+      ctx.clearRect(0, 0, W, H);
+      const alpha = elapsed > FADESTART ? 1 - (elapsed - FADESTART) / 700 : 1;
+
+      for (const p of pieces) {
+        p.vy = Math.min(p.vy + 0.045, 9);
+        p.y  += p.vy;
+        p.x  += p.vx + Math.sin(p.wave.phase) * p.wave.amp;
+        p.wave.phase += p.wave.freq;
+        p.rotZ += p.dRotZ;
+        p.rotY += p.dRotY;
+
+        // Recycle pieces that exit before fade begins
+        if (p.y > H + 20) {
+          if (elapsed < TOTAL - 1200) {
+            p.y  = -20; p.x = Math.random() * W;
+            p.vy = 1.8 + Math.random() * 2.8;
+          }
+          continue;
+        }
+
+        // 3D flip: scale width by |cos(rotY)|, choose face colour
+        const cosY = Math.cos(p.rotY);
+        const fill = cosY >= 0 ? p.color : p.back;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotZ);
+        ctx.scale(Math.abs(cosY) || 0.01, 1);
+        ctx.fillStyle = fill;
+
+        if (p.isCircle) {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        }
+        ctx.restore();
+      }
+
+      requestAnimationFrame(tick);
+    })(START);
+  }
+
   function playBurnAnimation(by) {
     msgInput.disabled = true; sendBtn.disabled = true;
     if (amOwner) burnBtn.disabled = true;
