@@ -242,7 +242,9 @@ io.on('connection', (socket) => {
     if (!room) return;
     const idx = room.messages.findIndex((m) => m.id === msgId && m.user === username);
     if (idx === -1) return;
-    room.messages.splice(idx, 1);
+    // Replace with tombstone so late joiners also see the ghost
+    const { ts } = room.messages[idx];
+    room.messages[idx] = { id: msgId, user: username, type: 'deleted', ts };
     io.to(joinedRoom).emit('msg-deleted', { msgId });
   });
 

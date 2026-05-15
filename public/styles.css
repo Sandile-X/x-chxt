@@ -456,6 +456,18 @@ input[type="text"]::placeholder { color: var(--muted); }
   font-style: italic; padding: 4px 8px;
 }
 
+/* ─── Deleted message ghost ──────────────────────────── */
+.bubble.deleted-ghost {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.85rem;
+  display: flex; align-items: center; gap: 6px;
+  opacity: 0.65;
+}
+.bubble.deleted-ghost .ghost-icon { font-style: normal; font-size: 0.9rem; }
+
 /* ─── Read receipts / ticks ──────────────────────────── */
 .ticks {
   display: inline-flex; align-items: center;

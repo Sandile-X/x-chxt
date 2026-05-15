@@ -209,7 +209,7 @@
 
     socket.on('msg-deleted', ({ msgId }) => {
       const node = msgNodes.get(msgId);
-      if (node) { node.remove(); msgNodes.delete(msgId); }
+      if (node) turnIntoGhost(node);
     });
   }
 
@@ -298,6 +298,7 @@
       row.addEventListener('click', (e) => {
         if (e.target.closest('button, a, .edit-form')) return;
         if (row.classList.contains('editing')) return;
+        if (row._deleted) return;
         toggleMsgActions(row, m);
       });
     }
@@ -316,9 +317,10 @@
       row.appendChild(meta);
     }
 
-    if      (m.type === 'voice') row.appendChild(buildVoiceBubble(m, isSelf));
-    else if (m.type === 'image') row.appendChild(buildImageBubble(m, isSelf));
-    else if (m.type === 'video') row.appendChild(buildVideoBubble(m, isSelf));
+    if      (m.type === 'deleted') { row._deleted = true; row.appendChild(buildGhostBubble()); }
+    else if (m.type === 'voice')   row.appendChild(buildVoiceBubble(m, isSelf));
+    else if (m.type === 'image')   row.appendChild(buildImageBubble(m, isSelf));
+    else if (m.type === 'video')   row.appendChild(buildVideoBubble(m, isSelf));
     else {
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
@@ -328,6 +330,25 @@
     }
 
     messages.appendChild(row);
+  }
+
+  function buildGhostBubble() {
+    const ghost = document.createElement('div');
+    ghost.className = 'bubble deleted-ghost';
+    const icon = document.createElement('span');
+    icon.className = 'ghost-icon'; icon.textContent = '🚫';
+    const label = document.createElement('em'); label.textContent = 'This message was deleted';
+    ghost.appendChild(icon); ghost.appendChild(label);
+    return ghost;
+  }
+
+  function turnIntoGhost(node) {
+    node._deleted = true;
+    node.querySelectorAll('.bubble, .voice-bubble, .media-bubble').forEach((el) => el.remove());
+    node.querySelector('.msg-actions')?.remove();
+    node.querySelector('.edit-form')?.remove();
+    node.classList.remove('editing');
+    node.appendChild(buildGhostBubble());
   }
 
   // ── Message actions ───────────────────────────────────────
@@ -474,9 +495,9 @@
     overlay.querySelector('#dConfirmBtn').addEventListener('click', () => {
       overlay.remove();
       if (socket) socket.emit('delete-msg', { msgId });
-      // Optimistic: remove from DOM immediately
+      // Optimistic: ghost immediately, server confirms
       const node = msgNodes.get(msgId);
-      if (node) { node.remove(); msgNodes.delete(msgId); }
+      if (node) turnIntoGhost(node);
     });
   }
 
