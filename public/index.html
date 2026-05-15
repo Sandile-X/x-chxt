@@ -4,24 +4,43 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Ephemeral Chat</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
-<body>
+<body class="grad-bg">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
   <main class="landing">
-    <div class="card">
-      <h1>Ephemeral Chat</h1>
-      <p class="muted">Private, temporary rooms. No accounts, no history, no traces.</p>
-      <button id="createBtn" class="primary">Create a new room</button>
-      <div class="divider"><span>or join with a link</span></div>
-      <p class="muted small">Paste an invite link into your browser. Rooms are only accessible to people who have the link.</p>
+    <div class="brand">
+      <h1>Ephemeral</h1>
+      <p>Private rooms. No accounts. No traces.<br>Messages vanish in 6 hours.</p>
     </div>
-    <footer class="muted small">Messages live in server RAM and disappear within 6 hours.</footer>
+
+    <div class="card">
+      <button id="createBtn" class="btn-primary">Start a new room →</button>
+      <div class="divider"><span>share a link, anyone can join</span></div>
+      <p class="muted small" style="text-align:center;line-height:1.5">
+        Rooms are invite-only. Nothing is stored after the session ends.
+      </p>
+    </div>
+
+    <p class="landing-footer">Messages live in server RAM · auto-deleted after 6 h</p>
   </main>
+
   <script>
     document.getElementById('createBtn').addEventListener('click', async () => {
-      const res = await fetch('/api/rooms', { method: 'POST' });
-      const { roomId } = await res.json();
-      location.href = '/room/' + roomId;
+      const btn = document.getElementById('createBtn');
+      btn.textContent = 'Creating…';
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/rooms', { method: 'POST' });
+        const { roomId } = await res.json();
+        location.href = '/room/' + roomId;
+      } catch {
+        btn.textContent = 'Start a new room →';
+        btn.disabled = false;
+      }
     });
   </script>
 </body>

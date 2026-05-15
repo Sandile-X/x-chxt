@@ -3,18 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Room — Ephemeral Chat</title>
+  <title>Ephemeral Chat</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
-<body>
+<body class="grad-bg">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
   <!-- Username modal -->
   <div id="nameModal" class="modal">
-    <div class="card">
-      <h2>Pick a username</h2>
-      <p class="muted small">Used only for this session. Nothing is saved.</p>
-      <input id="nameInput" type="text" maxlength="24" placeholder="e.g. wandering-otter" autocomplete="off" />
-      <button id="joinBtn" class="primary">Join room</button>
-      <p id="nameError" class="error small"></p>
+    <div class="modal-backdrop"></div>
+    <div class="modal-sheet">
+      <h2>What would you like<br>to be <span>called today?</span></h2>
+      <p class="sub">Just for this session — nothing is saved.</p>
+      <div class="input-wrap">
+        <label class="input-label" for="nameInput">Your name</label>
+        <input id="nameInput" type="text" maxlength="24"
+               placeholder="e.g. midnight-fox" autocomplete="off"
+               autocorrect="off" autocapitalize="none" spellcheck="false" />
+      </div>
+      <button id="joinBtn" class="btn-primary">Enter the room →</button>
+      <p id="nameError" class="error" style="margin-top:10px;text-align:center"></p>
     </div>
   </div>
 
@@ -22,30 +31,72 @@
   <div id="app" class="app hidden">
     <header class="topbar">
       <div class="room-info">
-        <span class="dot"></span>
+        <span class="status-dot"></span>
         <span class="room-label">Room</span>
-        <code id="roomIdLabel"></code>
+        <span class="room-id-chip" id="roomIdLabel"></span>
       </div>
-      <div class="actions">
-        <button id="copyBtn" class="ghost" title="Copy invite link">Copy link</button>
-        <button id="usersBtn" class="ghost" title="Online users">
-          Users <span id="userCount" class="badge">0</span>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="copyBtn" title="Copy invite link">🔗</button>
+        <button class="icon-btn" id="usersBtn" title="Online users">
+          👥 <span class="user-count-badge" id="userCount">0</span>
+        </button>
+        <button class="burn-btn hidden" id="burnBtn" title="Burn this chat">
+          <i class="fire-icon">🔥</i> Burn
         </button>
       </div>
     </header>
 
-    <aside id="usersPanel" class="users-panel hidden">
-      <h3>Online</h3>
+    <div id="usersPanel" class="users-panel hidden">
+      <h3>Online now</h3>
       <ul id="userList"></ul>
-    </aside>
+    </div>
 
-    <main id="messages" class="messages" aria-live="polite"></main>
+    <main id="messages" class="messages" aria-live="polite" aria-label="Messages"></main>
 
-    <div id="typingIndicator" class="typing"></div>
+    <div class="typing-bar" id="typingBar" aria-live="polite">
+      <div class="typing-dots hidden" id="typingDots">
+        <span></span><span></span><span></span>
+      </div>
+      <span class="typing-text" id="typingText"></span>
+    </div>
 
-    <form id="composer" class="composer" autocomplete="off">
-      <input id="msgInput" type="text" maxlength="1000" placeholder="Type a message…" />
-      <button class="primary" type="submit">Send</button>
+    <!-- Attach menu (shown above composer when + is tapped) -->
+    <div id="attachMenu" class="attach-menu hidden">
+      <div class="attach-option" id="attachPhoto">
+        <span class="icon">🖼️</span>
+        <span class="label">Photo</span>
+      </div>
+      <div class="attach-option" id="attachVideo">
+        <span class="icon">🎬</span>
+        <span class="label">Video (7s)</span>
+      </div>
+    </div>
+
+    <!-- Hidden file inputs -->
+    <input type="file" id="photoInput" accept="image/*"         hidden />
+    <input type="file" id="videoInput" accept="video/*"         hidden />
+
+    <form id="composer" class="composer" autocomplete="off" style="position:relative">
+      <!-- Attach button -->
+      <button class="attach-btn" type="button" id="attachBtn" title="Attach media">+</button>
+
+      <!-- Normal text input row -->
+      <div class="composer-input-wrap" id="inputWrap">
+        <input id="msgInput" type="text" maxlength="1000"
+               placeholder="Message…"
+               autocorrect="off" autocomplete="off" spellcheck="true" />
+      </div>
+
+      <!-- Recording state row (hidden until mic is held) -->
+      <div class="recording-bar hidden" id="recordingBar">
+        <div class="rec-dot"></div>
+        <span class="rec-timer" id="recTimer">0:00</span>
+        <span class="rec-hint">Release to send</span>
+        <button type="button" class="rec-cancel-btn" id="recCancelBtn" title="Cancel">✕</button>
+      </div>
+
+      <button class="mic-btn" type="button" id="micBtn" title="Hold to record voice message">🎤</button>
+      <button class="send-btn" type="submit" id="sendBtn" disabled title="Send">↑</button>
     </form>
   </div>
 
