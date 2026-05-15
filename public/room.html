@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Room — Ephemeral Chat</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- Username modal -->
+  <div id="nameModal" class="modal">
+    <div class="card">
+      <h2>Pick a username</h2>
+      <p class="muted small">Used only for this session. Nothing is saved.</p>
+      <input id="nameInput" type="text" maxlength="24" placeholder="e.g. wandering-otter" autocomplete="off" />
+      <button id="joinBtn" class="primary">Join room</button>
+      <p id="nameError" class="error small"></p>
+    </div>
+  </div>
+
+  <!-- Chat UI -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="room-info">
+        <span class="dot"></span>
+        <span class="room-label">Room</span>
+        <code id="roomIdLabel"></code>
+      </div>
+      <div class="actions">
+        <button id="copyBtn" class="ghost" title="Copy invite link">Copy link</button>
+        <button id="usersBtn" class="ghost" title="Online users">
+          Users <span id="userCount" class="badge">0</span>
+        </button>
+      </div>
+    </header>
+
+    <aside id="usersPanel" class="users-panel hidden">
+      <h3>Online</h3>
+      <ul id="userList"></ul>
+    </aside>
+
+    <main id="messages" class="messages" aria-live="polite"></main>
+
+    <div id="typingIndicator" class="typing"></div>
+
+    <form id="composer" class="composer" autocomplete="off">
+      <input id="msgInput" type="text" maxlength="1000" placeholder="Type a message…" />
+      <button class="primary" type="submit">Send</button>
+    </form>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

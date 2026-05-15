@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Ephemeral Chat</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="landing">
+    <div class="card">
+      <h1>Ephemeral Chat</h1>
+      <p class="muted">Private, temporary rooms. No accounts, no history, no traces.</p>
+      <button id="createBtn" class="primary">Create a new room</button>
+      <div class="divider"><span>or join with a link</span></div>
+      <p class="muted small">Paste an invite link into your browser. Rooms are only accessible to people who have the link.</p>
+    </div>
+    <footer class="muted small">Messages live in server RAM and disappear within 6 hours.</footer>
+  </main>
+  <script>
+    document.getElementById('createBtn').addEventListener('click', async () => {
+      const res = await fetch('/api/rooms', { method: 'POST' });
+      const { roomId } = await res.json();
+      location.href = '/room/' + roomId;
+    });
+  </script>
+</body>
+</html>
