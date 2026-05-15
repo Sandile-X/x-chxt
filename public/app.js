@@ -603,11 +603,14 @@
     const wrap = document.createElement('div');
     wrap.className = 'bubble media-bubble';
 
+    // blob: URL instead of data: URI — browser can GC under memory pressure
+    const blobUrl = URL.createObjectURL(b64ToBlob(m.data, m.mimeType));
+
     const img = document.createElement('img');
     img.alt = 'photo';
-    img.src = 'data:' + m.mimeType + ';base64,' + m.data;
+    img.src = blobUrl;
     img.loading = 'lazy';
-    img.addEventListener('click', () => openLightbox(img.src));
+    img.addEventListener('click', () => openLightbox(blobUrl));
     wrap.appendChild(img);
 
     const meta = document.createElement('div');
@@ -632,7 +635,7 @@
     videoWrap.className = 'video-wrap';
 
     const video = document.createElement('video');
-    video.src = 'data:' + m.mimeType + ';base64,' + m.data;
+    video.src = URL.createObjectURL(b64ToBlob(m.data, m.mimeType));
     video.playsInline = true;
     video.loop = false;
     video.muted = false;
@@ -714,31 +717,28 @@
     const file = photoInput.files[0]; photoInput.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) { toast('Not an image'); return; }
-    if (file.size > 20_000_000) { toast('Image too large (max 20 MB before compression)'); return; }
 
     const pill = showProgress('Compressing…');
     try {
-      const { b64, mimeType } = await compressImage(file, 1280, 0.8);
-      if (b64.length > 3_500_000) { toast('Image still too large after compression'); return; }
+      const { b64, mimeType } = await compressImage(file, 960, 0.72);
       pill.remove();
       if (socket) socket.emit('media', { mediaType: 'image', data: b64, mimeType });
-    } catch (err) {
-      pill.remove(); toast('Failed to process image');
-    }
+    } catch (_) { pill.remove(); toast('Failed to process image'); }
   });
 
   async function compressImage(file, maxPx, quality) {
     const bitmap = await createImageBitmap(file);
     let { width: w, height: h } = bitmap;
     if (w > maxPx || h > maxPx) {
-      const ratio = Math.min(maxPx / w, maxPx / h);
-      w = Math.round(w * ratio); h = Math.round(h * ratio);
+      const r = Math.min(maxPx / w, maxPx / h);
+      w = Math.round(w * r); h = Math.round(h * r);
     }
     const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
     canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
     bitmap.close();
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error('toBlob failed')); return; }
         const reader = new FileReader();
         reader.onloadend = () => resolve({ b64: reader.result.split(',')[1], mimeType: 'image/jpeg' });
         reader.readAsDataURL(blob);
@@ -746,39 +746,97 @@
     });
   }
 
-  // ── Video upload ──────────────────────────────────────────
-  videoInput.addEventListener('change', () => {
+  // ── Video upload — trim to 7 s + compress ─────────────────
+  videoInput.addEventListener('change', async () => {
     const file = videoInput.files[0]; videoInput.value = '';
     if (!file) return;
     if (!file.type.startsWith('video/')) { toast('Not a video'); return; }
 
-    const pill = showProgress('Checking…');
-    const tempVideo = document.createElement('video');
-    tempVideo.preload = 'metadata';
-    const objUrl = URL.createObjectURL(file);
-    tempVideo.src = objUrl;
-
-    tempVideo.addEventListener('loadedmetadata', () => {
-      URL.revokeObjectURL(objUrl);
-      const duration = tempVideo.duration;
-      if (duration > 7.5) { pill.remove(); toast('Video must be 7 seconds or shorter'); return; }
-      if (file.size > 10_000_000) { pill.remove(); toast('Video too large (max 10 MB)'); return; }
-
-      pill.textContent = 'Sending…';
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const b64 = reader.result.split(',')[1];
-        if (b64.length > 10_000_000) { pill.remove(); toast('Video too large'); return; }
-        if (socket) socket.emit('media', { mediaType: 'video', data: b64, mimeType: file.type, duration });
-        pill.remove();
-      };
-      reader.readAsDataURL(file);
-    });
-
-    tempVideo.addEventListener('error', () => {
-      pill.remove(); toast('Could not read video'); URL.revokeObjectURL(objUrl);
-    });
+    const pill = showProgress('Trimming & compressing…');
+    try {
+      const { blob, duration } = await trimAndEncodeVideo(file, 7);
+      const b64 = await blobToB64(blob);
+      pill.remove();
+      if (socket) socket.emit('media', { mediaType: 'video', data: b64, mimeType: blob.type, duration });
+    } catch (_) { pill.remove(); toast('Failed to process video'); }
   });
+
+  // Re-encodes any video to ≤7 s at 480p / 500 kbps via canvas + MediaRecorder
+  function trimAndEncodeVideo(file, maxSecs) {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.playsInline = true;
+      video.muted = true;
+      const objUrl = URL.createObjectURL(file);
+      video.src = objUrl;
+
+      video.addEventListener('loadedmetadata', async () => {
+        const trimDur = Math.min(video.duration, maxSecs);
+
+        // Scale to max 480 px on the longer edge
+        const MAX_DIM = 480;
+        const scale = Math.min(MAX_DIM / (video.videoWidth || 480), MAX_DIM / (video.videoHeight || 270), 1);
+        const w = Math.max(2, Math.round((video.videoWidth  || 480) * scale));
+        const h = Math.max(2, Math.round((video.videoHeight || 270) * scale));
+
+        const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
+        const ctx = canvas.getContext('2d');
+        const canvasStream = canvas.captureStream(24);
+
+        // Attempt to also capture audio via Web Audio
+        let recordStream = canvasStream;
+        try {
+          ensureAudio();
+          const audioSrc  = audioCtx.createMediaElementSource(video);
+          const audioDest = audioCtx.createMediaStreamDestination();
+          audioSrc.connect(audioDest);
+          video.muted = false;
+          recordStream = new MediaStream([
+            ...canvasStream.getVideoTracks(),
+            ...audioDest.stream.getAudioTracks(),
+          ]);
+        } catch (_) { /* audio capture unavailable — video only */ }
+
+        const mimeType = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9', 'video/webm']
+          .find((t) => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+
+        const recorder = new MediaRecorder(recordStream, {
+          mimeType, videoBitsPerSecond: 500_000,
+        });
+        const chunks = [];
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        recorder.onstop = () => {
+          canvasStream.getTracks().forEach((t) => t.stop());
+          URL.revokeObjectURL(objUrl);
+          resolve({ blob: new Blob(chunks, { type: recorder.mimeType }), duration: trimDur });
+        };
+
+        video.currentTime = 0;
+        try { await video.play(); } catch (_) {}
+        recorder.start(100);
+
+        let animId;
+        const draw = () => {
+          ctx.drawImage(video, 0, 0, w, h);
+          animId = requestAnimationFrame(draw);
+        };
+        draw();
+
+        const stop = () => {
+          cancelAnimationFrame(animId);
+          video.pause();
+          if (recorder.state !== 'inactive') recorder.stop();
+        };
+        const t = setTimeout(stop, trimDur * 1000 + 300);
+        video.addEventListener('ended', () => { clearTimeout(t); stop(); });
+      });
+
+      video.addEventListener('error', () => {
+        URL.revokeObjectURL(objUrl);
+        reject(new Error('Video load failed'));
+      });
+    });
+  }
 
   function showProgress(text) {
     const pill = document.createElement('div');
