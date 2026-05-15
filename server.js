@@ -17,14 +17,22 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: false },
   maxHttpBufferSize: 15e6, // 15 MB — covers compressed images + short videos
+  pingTimeout:  60000,     // mobile browsers can be backgrounded for a while
+  pingInterval: 25000,
 });
+
+// How long to wait before treating a disconnect as a real departure.
+// Covers mobile backgrounding, brief network hiccups, etc.
+const REJOIN_GRACE_MS = 30_000;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
 // rooms: Map<roomId, {
 //   messages: [{id, user, text, ts}],
 //   users: Map<socketId, username>,
-//   readTimestamps: Map<socketId, {username, ts}>,  ← read receipts
+//   readTimestamps: Map<socketId, {username, ts}>,
+//   departureTimers: Map<username, {timer, wasOwner, socketId}>,
+//   ownerSocketId: string|null,
 //   lastActivity: number
 // }>
 const rooms = new Map();
@@ -52,7 +60,8 @@ function getOrCreateRoom(roomId) {
       messages: [],
       users: new Map(),
       readTimestamps: new Map(),
-      ownerSocketId: null,   // first joiner becomes owner
+      departureTimers: new Map(), // username → {timer, wasOwner, socketId}
+      ownerSocketId: null,
       lastActivity: Date.now(),
     };
     rooms.set(roomId, room);
@@ -99,7 +108,17 @@ io.on('connection', (socket) => {
     const room = getOrCreateRoom(roomId);
     joinedRoom = roomId;
     username = cleanName;
-    // First person to join owns the room
+
+    // Check if this is a silent reconnect within the grace window
+    const pending = room.departureTimers.get(cleanName);
+    const isSilentRejoin = !!pending;
+    if (pending) {
+      clearTimeout(pending.timer);
+      room.departureTimers.delete(cleanName);
+      room.users.delete(pending.socketId); // remove stale socket entry
+      if (pending.wasOwner) room.ownerSocketId = socket.id; // restore ownership
+    }
+
     if (!room.ownerSocketId) room.ownerSocketId = socket.id;
     const isOwner = room.ownerSocketId === socket.id;
     room.users.set(socket.id, username);
@@ -115,7 +134,8 @@ io.on('connection', (socket) => {
       isOwner,
     });
 
-    socket.to(roomId).emit('user-joined', { user: username });
+    // Only announce if this is a genuine new join, not a background reconnect
+    if (!isSilentRejoin) socket.to(roomId).emit('user-joined', { user: username });
     io.to(roomId).emit('users', Array.from(room.users.values()));
     io.to(roomId).emit('read-update', serializeReads(room));
   });
@@ -260,28 +280,47 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    if (!joinedRoom) return;
+    if (!joinedRoom || !username) return;
     const room = rooms.get(joinedRoom);
     if (!room) return;
-    room.users.delete(socket.id);
+
+    // Keep the user in the users map during the grace window so their
+    // presence stays visible. Only remove readTimestamps (they're not reading).
     room.readTimestamps.delete(socket.id);
     room.lastActivity = Date.now();
 
-    // Transfer ownership so burn is never lost
-    if (room.ownerSocketId === socket.id) {
-      if (room.users.size > 0) {
-        const nextId = room.users.keys().next().value;
-        room.ownerSocketId = nextId;
-        io.to(nextId).emit('you-are-owner');
-      } else {
-        // Room empty — next joiner gets it via the join handler
-        room.ownerSocketId = null;
-      }
-    }
+    const wasOwner = room.ownerSocketId === socket.id;
+    if (wasOwner) room.ownerSocketId = null; // restored on rejoin or transferred on expiry
 
-    socket.to(joinedRoom).emit('user-left', { user: username });
-    io.to(joinedRoom).emit('users', Array.from(room.users.values()));
-    io.to(joinedRoom).emit('read-update', serializeReads(room));
+    // Capture closure vars — the timer fires asynchronously
+    const capturedRoom = joinedRoom;
+    const capturedName = username;
+    const capturedSocketId = socket.id;
+
+    const timer = setTimeout(() => {
+      const r = rooms.get(capturedRoom);
+      if (!r) return;
+      r.departureTimers.delete(capturedName);
+      r.users.delete(capturedSocketId); // now really gone
+
+      io.to(capturedRoom).emit('user-left', { user: capturedName });
+      io.to(capturedRoom).emit('users', Array.from(r.users.values()));
+      io.to(capturedRoom).emit('read-update', serializeReads(r));
+
+      // Transfer ownership only after grace window expires
+      if (wasOwner) {
+        if (r.users.size > 0) {
+          const nextId = r.users.keys().next().value;
+          r.ownerSocketId = nextId;
+          io.to(nextId).emit('you-are-owner');
+        }
+        // else: room empty, next joiner gets it via join handler
+      }
+    }, REJOIN_GRACE_MS);
+
+    room.departureTimers.set(capturedName, { timer, wasOwner, socketId: capturedSocketId });
+    // Quietly update read state so ticks reflect the disconnect
+    io.to(capturedRoom).emit('read-update', serializeReads(room));
   });
 });
 
@@ -289,7 +328,8 @@ setInterval(() => {
   const now = Date.now();
   for (const [roomId, room] of rooms) {
     room.messages = room.messages.filter((m) => now - m.ts < MESSAGE_TTL_MS);
-    if (room.users.size === 0 && now - room.lastActivity > ROOM_INACTIVITY_MS) {
+    // Don't delete while grace timers are pending — users may still reconnect
+    if (room.users.size === 0 && room.departureTimers.size === 0 && now - room.lastActivity > ROOM_INACTIVITY_MS) {
       rooms.delete(roomId);
     }
   }
